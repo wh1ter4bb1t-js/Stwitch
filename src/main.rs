@@ -51,7 +51,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         return Ok(())
     };
 
-    let caster_name = search_items[1..].to_vec().join(" ");
+    let (caster_name, detach) = if search_items[1] == "-d" {
+        (search_items[2..].to_vec().join(" "), true)
+    } else {
+        (search_items[1..].to_vec().join(" "), false)
+    };
 
     let client_id = cfg.client_id;
     let secret = cfg.secret;
@@ -106,7 +110,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     }.to_string();
 
 
-    Command::new("mpv").arg(url).status().expect("failed to open url in mpv");
+    if detach == true {
+        Command::new("mpv")
+            .arg("--no-terminal")
+            .arg(url)
+            .spawn()
+            .expect("failed to open url in mpv");
+    } else {
+        Command::new("mpv")
+            .arg(url)
+            .status()
+            .expect("failed to open url in mpv");
+    }
 
     Ok(())
 }
