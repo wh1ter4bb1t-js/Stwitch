@@ -44,7 +44,7 @@ impl ::std::default::Default for Config {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let cfg: Config = confy::load_path("./config")?;
+    let cfg: Config = confy::load("stwitch")?;
     let search_items: Vec<String> = env::args().collect();
 
     if search_items.len() < 2 {
