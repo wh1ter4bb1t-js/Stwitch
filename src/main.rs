@@ -36,15 +36,16 @@ impl Vods {
 struct Config {
     client_id: String,
     secret: String,
+    subscribes: Vec<String>
 }
 
 impl ::std::default::Default for Config {
-    fn default() -> Self { Self { client_id: "".into(), secret: "".into() }}
+    fn default() -> Self { Self { client_id: "".into(), secret: "".into(), subscribes: vec![] }}
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let cfg: Config = confy::load("stwitch")?;
+    let mut cfg: Config = confy::load("stwitch")?;
     let search_items: Vec<String> = env::args().collect();
 
     if search_items.len() < 2 {
@@ -53,6 +54,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
     let (caster_name, detach) = if search_items[1] == "-d" {
         (search_items[2..].to_vec().join(" "), true)
+    } else if search_items[1] == "-s" {
+        let caster_choice = if search_items[2..].len() > 0 {
+            cfg.subscribes.push(search_items[2..].to_vec().join(" "));
+            confy::store("stwitch", &cfg)?;
+            search_items[2..].to_vec().join(" ")
+        } else {
+            let streamer_choices = cfg.subscribes;
+            let streamer_selection = Select::new()
+                .items(&streamer_choices)
+                .default(0)
+                .interact()
+                .expect("failed to get streamer_selection");
+
+            streamer_choices[streamer_selection].to_string()
+        };
+
+        (caster_choice, false)
     } else {
         (search_items[1..].to_vec().join(" "), false)
     };
