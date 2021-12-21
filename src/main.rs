@@ -52,13 +52,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         return Ok(())
     };
 
-    let (caster_name, detach) = if search_items[1] == "-d" {
-        (search_items[2..].to_vec().join(" "), true)
-    } else if search_items[1] == "-s" {
-        let caster_choice = if search_items[2..].len() > 0 {
-            cfg.subscribes.push(search_items[2..].to_vec().join(" "));
+    let mut flags = vec![];
+    let mut q = vec![];
+
+    for arg in &search_items[1..] {
+        match arg.as_ref() {
+            "-d"| "--detach" => {
+                flags.push("-d");
+            },
+            "-s" | "--subscribe" => {
+                flags.push("-s")
+            },
+            "-sd" | "-ds" => {
+                flags.push("-d");
+                flags.push("-s")
+            },
+            _ => {
+                q.push(arg.to_string());
+            }
+        }
+    }
+
+    let detach = if flags.contains(&"-d") {
+        true
+    } else {
+        false
+    } ;
+
+    let caster_name = if flags.contains(&"-s") {
+        let caster_choice = if q.len() > 0 {
+            cfg.subscribes.push(q.join(" "));
             confy::store("stwitch", &cfg)?;
-            search_items[2..].to_vec().join(" ")
+            q.join(" ")
         } else {
             let streamer_choices = cfg.subscribes;
             let streamer_selection = Select::new()
@@ -70,9 +95,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
             streamer_choices[streamer_selection].to_string()
         };
 
-        (caster_choice, false)
+        caster_choice
     } else {
-        (search_items[1..].to_vec().join(" "), false)
+        q.join(" ")
     };
 
     let client_id = cfg.client_id;
