@@ -1,47 +1,12 @@
+mod lib;
 use std::env;
-use serde::{Serialize, Deserialize};
-use std::process::Command;
-use dialoguer::Select;
-use reqwest::Client as ReqwestClient;
-use twitch_api2::{TwitchClient, helix::channels::GetChannelInformationRequest, helix::streams::get_streams, helix::videos::get_videos};
-use twitch_api2::twitch_oauth2::{AppAccessToken, AccessToken, UserToken, ClientSecret, ClientId, Scope, tokens::errors::TokenError};
+use lib::twitch::handle_twitch_api;
+use lib::flags::handle_flags;
+use lib::selection::handle_selection;
+use lib::play::play;
+use lib::config::Config;
+use twitch_api2::twitch_oauth2::{AppAccessToken, ClientSecret, ClientId, Scope, tokens::errors::TokenError};
 use twitch_api2::twitch_oauth2::client::surf_http_client;
-
-struct Vods {
-    vods: Vec<get_videos::Video>
-}
-
-impl Vods {
-    fn get_titles(&self) -> Vec<&String> {
-        let mut titles = vec![];
-        for vod in &self.vods {
-            titles.push(&vod.title);
-        }
-        return titles;
-    }
-
-    fn get_stream(&self, title: String) -> String {
-        let mut url = "".to_string();
-        for vod in &self.vods {
-            if title == vod.title {
-                url = vod.url.clone();
-            }
-        }
-
-        return url;
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Config {
-    client_id: String,
-    secret: String,
-    subscribes: Vec<String>
-}
-
-impl ::std::default::Default for Config {
-    fn default() -> Self { Self { client_id: "".into(), secret: "".into(), subscribes: vec![] }}
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -52,119 +17,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         return Ok(())
     };
 
-    let mut flags = vec![];
-    let mut q = vec![];
-
-    for arg in &search_items[1..] {
-        match arg.as_ref() {
-            "-d"| "--detach" => {
-                flags.push("-d");
-            },
-            "-s" | "--subscribe" => {
-                flags.push("-s")
-            },
-            "-sd" | "-ds" => {
-                flags.push("-d");
-                flags.push("-s")
-            },
-            _ => {
-                q.push(arg.to_string());
-            }
-        }
-    }
-
-    let detach = if flags.contains(&"-d") {
-        true
-    } else {
-        false
-    } ;
-
-    let caster_name = if flags.contains(&"-s") {
-        let caster_choice = if q.len() > 0 {
-            cfg.subscribes.push(q.join(" "));
-            confy::store("stwitch", &cfg)?;
-            q.join(" ")
-        } else {
-            let streamer_choices = cfg.subscribes;
-            let streamer_selection = Select::new()
-                .items(&streamer_choices)
-                .default(0)
-                .interact()
-                .expect("failed to get streamer_selection");
-
-            streamer_choices[streamer_selection].to_string()
-        };
-
-        caster_choice
-    } else {
-        q.join(" ")
-    };
-
+    let (detach, caster_name) = handle_flags(&mut cfg, search_items);
     let client_id = cfg.client_id;
     let secret = cfg.secret;
 
+
     let token =
-    match AppAccessToken::get_app_access_token(surf_http_client, ClientId::new(client_id), ClientSecret::new(secret), Scope::all()).await {
-        Ok(t) => t,
-        Err(TokenError::Request(e)) => panic!("got error: {:?}", e),
-        Err(e) => panic!("{}", e),
+    match AppAccessToken::get_app_access_token(
+            surf_http_client, 
+            ClientId::new(client_id.to_string()), 
+            ClientSecret::new(secret.to_string()), 
+            Scope::all()
+        ).await {
+            Ok(t) => t,
+            Err(TokenError::Request(e)) => panic!("got error: {:?}", e),
+            Err(e) => panic!("{}", e),
     };
 
-    let client: TwitchClient<'static, reqwest::Client> = TwitchClient::new();
-
-    let caster = client.helix.get_channel_from_login(&*caster_name, &token).await?.expect("failed to get user");
-    let caster_id = &caster.broadcaster_id;
-    
-    let stream_request = get_streams::GetStreamsRequest::builder()
-        .user_login(vec![caster_name.to_string()])
-        .build();
-
-    let stream_details: Vec<get_streams::Stream> = client.helix.req_get(stream_request, &token).await?.data;
 
 
-    let mut caster_vods = Vods {
-        vods: vec![],
-    };
+    let (stream_details, caster_vods) = handle_twitch_api(token, &caster_name)
+        .await
+        .expect("failed to get stream details");
 
-    let request = get_videos::GetVideosRequest::builder()
-        .user_id(caster_id.to_string())
-        .build();
-    caster_vods.vods = client.helix.req_get(request, &token).await?.data;
+    let url = handle_selection(caster_name, stream_details, caster_vods);
 
-    let mut vods_titles = caster_vods.get_titles();
-    let s = if stream_details.len() > 0 { format!("LIVE: {}", stream_details[0].title) } else { "".to_string() }.to_string();
-    if s.len() > 0 {
-        vods_titles.insert(0, &s)
-    };
-
-    let selection = Select::new()
-        .items(&vods_titles)
-        .default(0)
-        .interact()?;
-
-    let url = if selection == 0 && vods_titles[selection].contains("LIVE") {
-        format!("https://twitch.tv/{}", caster_name)
-    } else {
-        if s.len() > 0 {
-            caster_vods.get_stream(vods_titles[selection+1].to_string())
-        } else {
-            caster_vods.get_stream(vods_titles[selection].to_string())
-        }
-    }.to_string();
-
-
-    if detach == true {
-        Command::new("mpv")
-            .arg("--no-terminal")
-            .arg(url)
-            .spawn()
-            .expect("failed to open url in mpv");
-    } else {
-        Command::new("mpv")
-            .arg(url)
-            .status()
-            .expect("failed to open url in mpv");
-    }
+    play(detach, url);
 
     Ok(())
 }
