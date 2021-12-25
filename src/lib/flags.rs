@@ -1,13 +1,33 @@
 use crate::Config;
 use dialoguer::Select;
 
+fn show_help() {
+    println!("
+        USAGE: cryaa [options..] <query> 
+
+        A cli tool for streaming either a live twitch stream or vod
+
+        -d --detach         detach the mpv player from the terminal
+        -s --subscribe      -- WITH QUERY:
+                                add the query to your subscriber list
+                            -- WITHOUT QUERY:
+                                choose query from a subscriber list
+        -h --help           show this help screen
+     ");
+}
+
 pub fn handle_flags(cfg: &mut Config, search_items: Vec<String>) -> (bool, String) {
     let mut flags = vec![];
     let mut q = vec![];
 
     for arg in &search_items[1..] {
         match arg.as_ref() {
-            "-d"| "--detach" => {
+            "-h" | "--help" => {
+                show_help();
+                std::process::exit(0);
+                
+            },
+            "-d" | "--detach" => {
                 flags.push("-d");
             },
             "-s" | "--subscribe" => {
