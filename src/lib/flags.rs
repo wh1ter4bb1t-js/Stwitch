@@ -1,7 +1,7 @@
 use crate::Config;
 use dialoguer::Select;
 
-fn show_help() {
+pub fn show_help() {
     println!("
         USAGE: cryaa [options..] <query> 
 

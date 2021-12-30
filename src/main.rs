@@ -1,7 +1,7 @@
 mod lib;
 use std::env;
 use lib::twitch::handle_twitch_api;
-use lib::flags::handle_flags;
+use lib::flags::{show_help, handle_flags};
 use lib::selection::handle_selection;
 use lib::play::play;
 use lib::config::Config;
@@ -14,6 +14,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let search_items: Vec<String> = env::args().collect();
 
     if search_items.len() < 2 {
+        println!("Please make sure to add a query\n");
+        show_help();
         return Ok(())
     };
 
